@@ -1,11 +1,12 @@
 """ agelessmojo bot implementation """
 
-import time, json, requests
+import time, json, requests, os
 from bottle import get, post, request, run, response
 
 RELAY_SPEED_URL = \
         'http://carrera-relay.beta.swisscloud.io/relay/ws/rest/relay/speed'
 TEAM_ID = 'agelessmojo'
+PORT = os.getenv('VCAP_APP_PORT', '5000')
 ACCESS_CODE = 'yoyoyo'
 
 @get('/ping')
@@ -45,5 +46,5 @@ def sensor():
 
 if __name__ == '__main__':
     # TODO write a command line switch for debug and prod
-    run(host='localhost', port=80)
+    run(host='localhost', port=PORT)
     #run(host='localhost', port=8080, debug=True)
