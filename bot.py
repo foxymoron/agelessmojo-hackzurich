@@ -44,4 +44,6 @@ def sensor():
     # need to do something here
 
 if __name__ == '__main__':
-    run(host='localhost', port=80, debug=True)
+    # TODO write a command line switch for debug and prod
+    run(host='localhost', port=80)
+    #run(host='localhost', port=8080, debug=True)
