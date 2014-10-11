@@ -30,12 +30,12 @@ def ping():
 
 def send_power_control(power):
     """ Send power control to the relay. """
-    payload = {'teamId':TEAM_ID,
-               'accessCode': ACCESS_CODE,
-               'power': power,
-               'timeStamp': int(round(time.time() * 1000))}
+    #payload = {'teamId':TEAM_ID,
+               #'accessCode': ACCESS_CODE,
+               #'power': power,
+               #'timeStamp': int(round(time.time() * 1000))}
     #requests.post(RELAY_SPEED_URL, data=json.dumps(payload))
-    return payload
+    return str(power)
 
 def round_reset():
     """ Bookkeeping and preparing for the next round """
