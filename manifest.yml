@@ -1,0 +1,4 @@
+# ageless mojo bot manifest
+applications:
+- name: agelessmojo-bot
+  buildbpack: https://github.com/cloudfoundry/buildpack-python.git
