@@ -1,20 +1,18 @@
 """ agelessmojo bot implementation """
 from __future__ import division # for floating point division
-import time, json, requests, os
+import os, json
+import numpy as np
+from sklearn.hmm import GaussianHMM
 from bottle import get, post, request, run, response
 
-RELAY_SPEED_URL = \
-        'http://carrera-relay.beta.swisscloud.io/relay/ws/rest/relay/speed'
-TEAM_ID = 'agelessmojo'
 PORT = os.getenv('VCAP_APP_PORT')
 HOST = os.getenv('VCAP_APP_HOST')
-ACCESS_CODE = 'yoyoyo'
 
-WINDOW_SIZE = 11
+HMM = GaussianHMM(50, "diag")
 
-MAX_NORMAL = 255
-MIN_NORMAL = -255
+# TODO Variables here
 
+WINDOW_SIZE = 5
 
 LAP_DATA = {}
 LAP_DATA_SMOOTHED = {}
@@ -30,11 +28,7 @@ def ping():
 
 def send_power_control(power):
     """ Send power control to the relay. """
-    #payload = {'teamId':TEAM_ID,
-               #'accessCode': ACCESS_CODE,
-               #'power': power,
-               #'timeStamp': int(round(time.time() * 1000))}
-    #requests.post(RELAY_SPEED_URL, data=json.dumps(payload))
+    response.headers['Content-Type'] = 'text/plain'
     return str(power)
 
 def round_reset():
@@ -49,86 +43,48 @@ def smoothing():
     global LAP_ITERATOR
 
     if not LAP_DATA_SMOOTHED[LAP_COUNT]:
-        acc0 = [LAP_DATA[LAP_COUNT][0][0][LAP_ITERATOR]]
-        acc1 = [LAP_DATA[LAP_COUNT][0][1][LAP_ITERATOR]]
-        acc2 = [LAP_DATA[LAP_COUNT][0][2][LAP_ITERATOR]]
-        gyr0 = [LAP_DATA[LAP_COUNT][1][0][LAP_ITERATOR]]
-        gyr1 = [LAP_DATA[LAP_COUNT][1][1][LAP_ITERATOR]]
-        gyr2 = [LAP_DATA[LAP_COUNT][1][2][LAP_ITERATOR]]
-
-        acc = [acc0]
-        acc.append(acc1)
-        acc.append(acc2)
-
-        gyr = [gyr0]
-        gyr.append(gyr1)
-        gyr.append(gyr2)
-
-        LAP_DATA_SMOOTHED[LAP_COUNT].append(acc)
-        LAP_DATA_SMOOTHED[LAP_COUNT].append(gyr)
-
+        LAP_DATA_SMOOTHED[LAP_COUNT] = LAP_DATA[LAP_COUNT]
         LAP_ITERATOR += 1
     elif len(LAP_DATA[LAP_COUNT][0][0]) <= WINDOW_SIZE:
-        acc0 = (LAP_DATA[LAP_COUNT][0][0][LAP_ITERATOR] + \
-                ((LAP_DATA_SMOOTHED[LAP_COUNT][0][0][LAP_ITERATOR- 1]) * \
+        sacc0 = (LAP_DATA[LAP_COUNT][0][LAP_ITERATOR] + \
+                ((LAP_DATA_SMOOTHED[LAP_COUNT][0][LAP_ITERATOR- 1]) * \
                 LAP_ITERATOR)) / LAP_ITERATOR + 1
-        acc1 = (LAP_DATA[LAP_COUNT][0][1][LAP_ITERATOR] + \
-                ((LAP_DATA_SMOOTHED[LAP_COUNT][0][1][LAP_ITERATOR - 1]) * \
+        sacc1 = (LAP_DATA[LAP_COUNT][1][LAP_ITERATOR] + \
+                ((LAP_DATA_SMOOTHED[LAP_COUNT][1][LAP_ITERATOR - 1]) * \
                 LAP_ITERATOR)) / LAP_ITERATOR + 1
-        acc2 = (LAP_DATA[LAP_COUNT][0][2][LAP_ITERATOR] + \
-                ((LAP_DATA_SMOOTHED[LAP_COUNT][0][2][LAP_ITERATOR - 1]) * \
-                LAP_ITERATOR)) / LAP_ITERATOR + 1
-        gyr0 = (LAP_DATA[LAP_COUNT][1][0][LAP_ITERATOR] + \
-                ((LAP_DATA_SMOOTHED[LAP_COUNT][1][0][LAP_ITERATOR - 1]) * \
-                LAP_ITERATOR)) / LAP_ITERATOR + 1
-        gyr1 = (LAP_DATA[LAP_COUNT][1][1][LAP_ITERATOR] + \
-                ((LAP_DATA_SMOOTHED[LAP_COUNT][1][1][LAP_ITERATOR - 1]) * \
-                LAP_ITERATOR)) / LAP_ITERATOR + 1
-        gyr2 = (LAP_DATA[LAP_COUNT][1][2][LAP_ITERATOR] + \
-                ((LAP_DATA_SMOOTHED[LAP_COUNT][1][2][LAP_ITERATOR - 1]) * \
+        sgyr0 = (LAP_DATA[LAP_COUNT][2][LAP_ITERATOR] + \
+                ((LAP_DATA_SMOOTHED[LAP_COUNT][2][LAP_ITERATOR - 1]) * \
                 LAP_ITERATOR)) / LAP_ITERATOR + 1
 
-        LAP_DATA_SMOOTHED[LAP_COUNT][0][0].append(acc0)
-        LAP_DATA_SMOOTHED[LAP_COUNT][0][1].append(acc1)
-        LAP_DATA_SMOOTHED[LAP_COUNT][0][2].append(acc2)
-        LAP_DATA_SMOOTHED[LAP_COUNT][1][0].append(gyr0)
-        LAP_DATA_SMOOTHED[LAP_COUNT][1][1].append(gyr1)
-        LAP_DATA_SMOOTHED[LAP_COUNT][1][2].append(gyr2)
-
+        LAP_DATA_SMOOTHED[LAP_COUNT] = np.vstack( \
+                [np.append(LAP_DATA[LAP_COUNT][0], sacc0),\
+                np.append(LAP_DATA[LAP_COUNT][1], sacc1), \
+                np.append(LAP_DATA[LAP_COUNT][2], sgyr0)])
         LAP_ITERATOR += 1
     else:
-        acc0 = LAP_DATA_SMOOTHED[LAP_COUNT][0][0][LAP_ITERATOR - 1] + \
-                (LAP_DATA[LAP_COUNT][0][0][LAP_ITERATOR] / WINDOW_SIZE) - \
-                (LAP_DATA[LAP_COUNT][0][0][LAP_ITERATOR - WINDOW_SIZE] / \
+        sacc0 = LAP_DATA_SMOOTHED[LAP_COUNT][0][LAP_ITERATOR - 1] + \
+                (LAP_DATA[LAP_COUNT][0][LAP_ITERATOR] / WINDOW_SIZE) - \
+                (LAP_DATA[LAP_COUNT][0][LAP_ITERATOR - WINDOW_SIZE] / \
                 WINDOW_SIZE)
-        acc1 = LAP_DATA_SMOOTHED[LAP_COUNT][0][1][LAP_ITERATOR - 1] + \
-                (LAP_DATA[LAP_COUNT][0][1][LAP_ITERATOR] / WINDOW_SIZE) - \
-                (LAP_DATA[LAP_COUNT][0][1][LAP_ITERATOR - WINDOW_SIZE] / \
+        sacc1 = LAP_DATA_SMOOTHED[LAP_COUNT][1][LAP_ITERATOR - 1] + \
+                (LAP_DATA[LAP_COUNT][1][LAP_ITERATOR] / WINDOW_SIZE) - \
+                (LAP_DATA[LAP_COUNT][1][LAP_ITERATOR - WINDOW_SIZE] / \
                 WINDOW_SIZE)
-        acc2 = LAP_DATA_SMOOTHED[LAP_COUNT][0][2][LAP_ITERATOR - 1] + \
-                (LAP_DATA[LAP_COUNT][0][2][LAP_ITERATOR] / WINDOW_SIZE) - \
-                (LAP_DATA[LAP_COUNT][0][2][LAP_ITERATOR - WINDOW_SIZE] / \
+        sgyr0 = LAP_DATA_SMOOTHED[LAP_COUNT][2][LAP_ITERATOR - 1] + \
+                (LAP_DATA[LAP_COUNT][2][LAP_ITERATOR] / WINDOW_SIZE) - \
+                (LAP_DATA[LAP_COUNT][2][LAP_ITERATOR - WINDOW_SIZE] / \
                 WINDOW_SIZE)
-        gyr0 = LAP_DATA_SMOOTHED[LAP_COUNT][1][0][LAP_ITERATOR - 1] + \
-                (LAP_DATA[LAP_COUNT][1][0][LAP_ITERATOR] / WINDOW_SIZE) - \
-                (LAP_DATA[LAP_COUNT][1][0][LAP_ITERATOR - WINDOW_SIZE] / \
-                WINDOW_SIZE)
-        gyr1 = LAP_DATA_SMOOTHED[LAP_COUNT][1][1][LAP_ITERATOR - 1] + \
-                (LAP_DATA[LAP_COUNT][1][1][LAP_ITERATOR] / WINDOW_SIZE) - \
-                (LAP_DATA[LAP_COUNT][1][1][LAP_ITERATOR - WINDOW_SIZE] / \
-                WINDOW_SIZE)
-        gyr2 = LAP_DATA_SMOOTHED[LAP_COUNT][1][2][LAP_ITERATOR - 1] + \
-                (LAP_DATA[LAP_COUNT][1][2][LAP_ITERATOR] / WINDOW_SIZE) - \
-                (LAP_DATA[LAP_COUNT][1][2][LAP_ITERATOR - WINDOW_SIZE] / \
-                WINDOW_SIZE)
+
+        LAP_DATA_SMOOTHED[LAP_COUNT] = np.vstack( \
+        [np.append(LAP_DATA[LAP_COUNT][0], sacc0),\
+        np.append(LAP_DATA[LAP_COUNT][1], sacc1), \
+        np.append(LAP_DATA[LAP_COUNT][2], sgyr0)])
 
         LAP_ITERATOR += 1
 
 @post('/start')
 def start():
     """ Signals start of the round. Returns a speedcontrol json object. """
-    LAP_DATA[LAP_COUNT] = []
-    LAP_DATA_SMOOTHED[LAP_COUNT] = []
     return send_power_control(120) # sending 120 to begin with
 
 
@@ -149,40 +105,21 @@ def sensor():
     if data['type'] == 'CAR_SENSOR_DATA':
         # append to the data dictionary
         if not LAP_DATA[LAP_COUNT]:
-            acc0 = [(data['acc'][0] - MIN_NORMAL) / (MAX_NORMAL - MIN_NORMAL)]
-            acc1 = [(data['acc'][1] - MIN_NORMAL) / (MAX_NORMAL - MIN_NORMAL)]
-            acc2 = [(data['acc'][2] - MIN_NORMAL) / (MAX_NORMAL - MIN_NORMAL)]
-            gyr0 = [(data['gyr'][0] - MIN_NORMAL) / (MAX_NORMAL - MIN_NORMAL)]
-            gyr1 = [(data['gyr'][1] - MIN_NORMAL) / (MAX_NORMAL - MIN_NORMAL)]
-            gyr2 = [(data['gyr'][2] - MIN_NORMAL) / (MAX_NORMAL - MIN_NORMAL)]
+            nacc0 = np.array([(data['acc'][0] + 255) / 510])
+            nacc1 = np.array([(data['acc'][1] + 255) / 510])
+            ngyr0 = np.array([(data['gyr'][0] - 242) / 440])
 
-            acc = [acc0]
-            acc.append(acc1)
-            acc.append(acc2)
-
-            gyr = [gyr0]
-            gyr.append(gyr1)
-            gyr.append(gyr2)
-
-            LAP_DATA[LAP_COUNT].append(acc)
-            LAP_DATA[LAP_COUNT].append(gyr)
+            LAP_DATA[LAP_COUNT] = np.vstack([nacc0, nacc1, ngyr0])
         else:
-            acc0 = (data['acc'][0] - MIN_NORMAL) / (MAX_NORMAL - MIN_NORMAL)
-            acc1 = (data['acc'][1] - MIN_NORMAL) / (MAX_NORMAL - MIN_NORMAL)
-            acc2 = (data['acc'][2] - MIN_NORMAL) / (MAX_NORMAL - MIN_NORMAL)
-            gyr0 = (data['gyr'][0] - MIN_NORMAL) / (MAX_NORMAL - MIN_NORMAL)
-            gyr1 = (data['gyr'][1] - MIN_NORMAL) / (MAX_NORMAL - MIN_NORMAL)
-            gyr2 = (data['gyr'][2] - MIN_NORMAL) / (MAX_NORMAL - MIN_NORMAL)
+            nacc0 = (data['acc'][0] + 255) / 510
+            nacc1 = (data['acc'][1] + 255) / 510
+            ngyr0 = (data['gyr'][0] - 242) / 440
 
-            LAP_DATA[LAP_COUNT][0][0].append(acc0)
-            LAP_DATA[LAP_COUNT][0][1].append(acc1)
-            LAP_DATA[LAP_COUNT][0][2].append(acc2)
-            LAP_DATA[LAP_COUNT][1][0].append(gyr0)
-            LAP_DATA[LAP_COUNT][1][1].append(gyr1)
-            LAP_DATA[LAP_COUNT][1][2].append(gyr2)
-
+            LAP_DATA[LAP_COUNT] = np.vstack( \
+                    [np.append(LAP_DATA[LAP_COUNT][0], nacc0),\
+                    np.append(LAP_DATA[LAP_COUNT][1], nacc1), \
+                    np.append(LAP_DATA[LAP_COUNT][2], ngyr0)])
         smoothing()
-        # fancy prediction algorithm
         return send_power_control(120)
     else:
         round_reset()
